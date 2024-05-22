@@ -1,21 +1,63 @@
-version: '3'
-
+version: "3"
 services:
-  nginx:
-    build: nginx
+  proxy.localhost:
+    container_name: proxy
+    build: proxy
     ports:
-      - "8888:80"
-  keycloak:
-    image: quay.io/keycloak/keycloak:24.0
+      - 8888:80
+  idp.localhost:
+    container_name: idp
+    image: bitnami/keycloak:24
     environment:
       KC_PROXY_HEADERS: xforwarded
       KC_HTTP_ENABLED: true
       KC_PROXY: edge
       KC_HOSTNAME_STRICT: false
-      KEYCLOAK_ADMIN: user
-      KEYCLOAK_ADMIN_PASSWORD: bitnami
       KC_LOG_LEVEL: INFO
+      KC_HOSTNAME_URL: "http://proxy.localhost:8888"
+      KC_HOSTNAME_ADMIN_URL: "http://proxy.localhost:8888"
+      KEYCLOAK_ADMIN_USER: user
+      KEYCLOAK_ADMIN_PASSWORD: bitnami
+      KEYCLOAK_DATABASE_HOST: db
+      KEYCLOAK_DATABASE_PORT: 5432
+      KEYCLOAK_DATABASE_NAME: bitnami_keycloak
+      KEYCLOAK_DATABASE_USER: bn_keycloak
+      KEYCLOAK_DATABASE_PASSWORD: password
     ports:
-      - "8080:8080"
+      - 8080:8080
+    depends_on:
+      - db
+  db:
+    container_name: db
+    image: postgres:16.3
+    ports:
+      - 5432:5432
+    restart: always
+    environment:
+      POSTGRES_USER: bn_keycloak
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: bitnami_keycloak
+    volumes:
+      - ./db/data:/var/lib/postgresql/data
+  web.localhost:
+    container_name: web
+    image: node:20.13-alpine
+    working_dir: /app
+    volumes:
+      - ./web:/app
+    ports:
+      - 3000:3000
     command:
-      - start-dev
+      - sh
+      - -c
+      - |
+        npm install
+        npm run dev
+    environment:
+      AUTH_URL: http://web.localhost:3000
+      AUTH_SECRET: 8Cxspt2f7LvYV3wKAvrs+CBsVnen99MSoLLgDZSmv8Q=
+      AUTH_TRUST_HOST: true
+      AUTH_KEYCLOAK_ID: web
+      AUTH_KEYCLOAK_SECRET: eJ101iPWJUe8rqQxSMjYqnKOqCfl7gH8
+      # AUTH_KEYCLOAK_ISSUER: http://idp.localhost:8080/realms/demo
+      AUTH_KEYCLOAK_ISSUER: http://proxy.localhost:8888/realms/demo
